@@ -158,7 +158,7 @@ export default function DubbingStudio() {
 
   useEffect(() => {
     const standalone =
-      window.matchMedia?.("(display-mode: standalone)").matches ||
+      (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
       window.navigator.standalone === true;
     setIsStandalone(standalone);
 

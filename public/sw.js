@@ -1,15 +1,13 @@
 // Minimal service worker: mainly exists so the browser considers this app
-// installable (PWA requirement), and gives basic offline access to the app
-// shell. It intentionally does NOT cache ffmpeg.wasm core files or the
-// video/audio files themselves — those are handled by the app at runtime.
+// installable (PWA requirement). Deliberately does NOT cache-first the app
+// shell, because Vite renames built JS/CSS files on every deploy (content
+// hash in the filename) — caching index.html would keep pointing at old,
+// now-deleted asset filenames and break the app with 404s after an update.
+// It also does NOT cache ffmpeg.wasm core files or video/audio blobs.
 
-const CACHE_NAME = "dubbing-studio-shell-v1";
-const APP_SHELL = ["/", "/index.html", "/manifest.webmanifest"];
+const CACHE_NAME = "dubbing-studio-shell-v2";
 
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).catch(() => {})
-  );
+self.addEventListener("install", () => {
   self.skipWaiting();
 });
 
@@ -23,19 +21,21 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  // Only handle same-origin GET requests for the app shell; let everything
-  // else (CDN scripts, ffmpeg core/wasm, media blobs) go straight to network.
   const url = new URL(event.request.url);
   if (event.request.method !== "GET" || url.origin !== self.location.origin) {
     return;
   }
 
+  // Network-first for navigations and the built JS/CSS assets: always try to
+  // get the latest version first, only falling back to cache if fully offline.
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      return (
-        cached ||
-        fetch(event.request).catch(() => caches.match("/index.html"))
-      );
-    })
+    fetch(event.request)
+      .then((response) => {
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone)).catch(() => {});
+        return response;
+      })
+      .catch(() => caches.match(event.request).then((cached) => cached || caches.match("/index.html")))
   );
 });
+
