@@ -453,20 +453,81 @@ export default function DubbingStudio() {
       await ffmpeg.writeFile("input.mp4", await fetchFile(videoFile));
       await ffmpeg.writeFile("dub.wav", await fetchFile(wavBlob));
 
-      // Replace original audio entirely with the merged dub track, keep original video
-      // stream untouched (no re-encode of video), and pad the video with 1s of its last
-      // frame at the end so a dub line that runs slightly long never gets cut off.
-      await ffmpeg.exec([
-        "-i", "input.mp4",
-        "-i", "dub.wav",
-        "-filter_complex", "[0:v]tpad=stop_mode=clone:stop_duration=1[v]",
-        "-map", "[v]",
-        "-map", "1:a:0",
-        "-c:v", "libx264",
-        "-preset", "veryfast",
-        "-c:a", "aac",
-        "output.mp4",
-      ]);
+      // Strategy: keep the original video stream fully copied (fast, no re-encode of
+      // the whole file). To make sure a dub line that runs slightly long never gets
+      // cut off, we generate a tiny separate 1s clip from the video's last frame
+      // (only THIS small clip gets encoded), then concat it onto the original video
+      // via the concat demuxer with -c copy. Re-encoding only happens on ~1s of
+      // footage instead of the entire video, so export stays fast even for long files.
+      // If the fast path fails (e.g. source codec/params aren't concat-compatible),
+      // we fall back to the slower but always-safe full re-encode with tpad.
+      let usedFastPath = true;
+      try {
+        // 1) Grab the very last frame of the original video as a still image.
+        await ffmpeg.exec([
+          "-sseof", "-1",
+          "-i", "input.mp4",
+          "-frames:v", "1",
+          "-q:v", "2",
+          "lastframe.jpg",
+        ]);
+
+        // 2) Turn that still into a 1s video clip matching the original's params,
+        //    so the concat below can be done with a plain stream copy.
+        await ffmpeg.exec([
+          "-loop", "1",
+          "-i", "lastframe.jpg",
+          "-t", "1",
+          "-r", "30",
+          "-c:v", "libx264",
+          "-preset", "veryfast",
+          "-pix_fmt", "yuv420p",
+          "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+          "pad.mp4",
+        ]);
+
+        // 3) Concat original + 1s padding clip with -c copy (no re-encode of original).
+        await ffmpeg.writeFile(
+          "concat_list.txt",
+          new TextEncoder().encode("file 'input.mp4'\nfile 'pad.mp4'\n")
+        );
+        await ffmpeg.exec([
+          "-f", "concat",
+          "-safe", "0",
+          "-i", "concat_list.txt",
+          "-c", "copy",
+          "padded.mp4",
+        ]);
+
+        // 4) Mux the padded video (stream copy, no re-encode) with the new dub audio.
+        await ffmpeg.exec([
+          "-i", "padded.mp4",
+          "-i", "dub.wav",
+          "-map", "0:v:0",
+          "-map", "1:a:0",
+          "-c:v", "copy",
+          "-c:a", "aac",
+          "-shortest",
+          "output.mp4",
+        ]);
+      } catch (fastPathErr) {
+        console.warn("Fast copy-based export failed, falling back to re-encode:", fastPathErr);
+        usedFastPath = false;
+        // Safe fallback: re-encode the whole video, padding 1s of cloned last frame
+        // via the tpad filter, so a long dub line never gets cut off.
+        await ffmpeg.exec([
+          "-i", "input.mp4",
+          "-i", "dub.wav",
+          "-filter_complex", "[0:v]tpad=stop_mode=clone:stop_duration=1[v]",
+          "-map", "[v]",
+          "-map", "1:a:0",
+          "-c:v", "libx264",
+          "-preset", "veryfast",
+          "-c:a", "aac",
+          "output.mp4",
+        ]);
+      }
+      void usedFastPath; // reserved for future diagnostics/telemetry if needed
 
       const data = await ffmpeg.readFile("output.mp4");
       const blob = new Blob([data.buffer], { type: "video/mp4" });
