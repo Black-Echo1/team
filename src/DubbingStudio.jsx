@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { Upload, Play, Pause, Mic, Square, Check, Trash2, Download, Users, Film, ChevronRight, RotateCcw, X, FileText, Loader2 } from "lucide-react";
+import { Upload, Play, Pause, Mic, Square, Check, Trash2, Download, Users, Film, ChevronRight, RotateCcw, X, FileText, Loader2, Smartphone } from "lucide-react";
 import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { fetchFile, toBlobURL } from "@ffmpeg/util";
 
@@ -119,6 +119,16 @@ function formatTime(s) {
 
 const PALETTE = ["#E8A33D", "#5B8A9A", "#B5563C", "#7A8C5C", "#8A6BA8", "#4A7A6E", "#C97A56", "#5C6E9C"];
 
+function InstallBadge({ onClick, visible }) {
+  if (!visible) return null;
+  return (
+    <button style={S.installBadge} onClick={onClick} aria-label="تحميل التطبيق">
+      <Smartphone size={20} strokeWidth={2} />
+      <span style={S.installBadgeLabel}>تحميل التطبيق</span>
+    </button>
+  );
+}
+
 export default function DubbingStudio() {
   const [stage, setStage] = useState("upload"); // upload -> characters -> studio
   const [videoURL, setVideoURL] = useState(null);
@@ -141,6 +151,38 @@ export default function DubbingStudio() {
   const fileInputRef = useRef(null);
   const srtInputRef = useRef(null);
   const streamRef = useRef(null);
+
+  // ---------- PWA install badge ----------
+  const [installPromptEvent, setInstallPromptEvent] = useState(null);
+  const [isStandalone, setIsStandalone] = useState(false);
+
+  useEffect(() => {
+    const standalone =
+      window.matchMedia?.("(display-mode: standalone)").matches ||
+      window.navigator.standalone === true;
+    setIsStandalone(standalone);
+
+    const onBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setInstallPromptEvent(e);
+    };
+    window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+    return () => window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+  }, []);
+
+  const isIOS = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+
+  const handleInstallClick = async () => {
+    if (installPromptEvent) {
+      installPromptEvent.prompt();
+      await installPromptEvent.userChoice;
+      setInstallPromptEvent(null);
+    } else if (isIOS) {
+      alert("للتثبيت على آيفون: اضغط زر المشاركة 🔗 بالأسفل ثم اختر \"إضافة إلى الشاشة الرئيسية\".");
+    } else {
+      alert("افتح قائمة المتصفح ⋮ ثم اختر \"إضافة إلى الشاشة الرئيسية\" أو \"تثبيت التطبيق\".");
+    }
+  };
 
   const handleVideoUpload = (e) => {
     const f = e.target.files?.[0];
@@ -546,6 +588,7 @@ export default function DubbingStudio() {
   if (stage === "upload") {
     return (
       <div style={S.page}>
+        <InstallBadge onClick={handleInstallClick} visible={!isStandalone} />
         <div style={S.uploadWrap}>
           <div style={S.brandRow}>
             <div style={S.logoMark}>ص</div>
@@ -595,6 +638,7 @@ export default function DubbingStudio() {
   if (stage === "characters") {
     return (
       <div style={S.page}>
+        <InstallBadge onClick={handleInstallClick} visible={!isStandalone} />
         <div style={S.charWrap}>
           <div style={S.stageHeader}>
             <div>
@@ -675,9 +719,10 @@ export default function DubbingStudio() {
   if (stage === "studio") {
   return (
     <div style={S.page}>
-      <div style={S.studioWrap}>
+      <InstallBadge onClick={handleInstallClick} visible={!isStandalone} />
+      <div style={S.studioWrap} className="studio-wrap">
         {/* Sidebar: character filter */}
-        <div style={S.sidebar}>
+        <div style={S.sidebar} className="studio-sidebar">
           <div style={S.sidebarTitle}><Users size={15} /> الشخصيات</div>
           <button
             style={{ ...S.filterBtn, ...(activeCharacter === null ? S.filterBtnActive : {}) }}
@@ -726,7 +771,7 @@ export default function DubbingStudio() {
         </div>
 
         {/* Main studio */}
-        <div style={S.mainPanel}>
+        <div style={S.mainPanel} className="studio-main">
           <video
             ref={videoRef}
             src={videoURL}
@@ -785,6 +830,7 @@ export default function DubbingStudio() {
   if (stage === "review") {
     return (
       <div style={S.page}>
+        <InstallBadge onClick={handleInstallClick} visible={!isStandalone} />
         <div style={S.reviewWrap}>
           <div style={S.stageHeader}>
             <div>
@@ -920,6 +966,27 @@ export default function DubbingStudio() {
 
 // ---------- Design tokens ----------
 const S = {
+  installBadge: {
+    position: "fixed",
+    bottom: 18,
+    left: "50%",
+    transform: "translateX(-50%)",
+    zIndex: 50,
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    background: "#E8A33D",
+    color: "#1C1A16",
+    border: "none",
+    borderRadius: 999,
+    padding: "10px 18px",
+    fontFamily: "'Tajawal', 'Segoe UI', sans-serif",
+    fontWeight: 700,
+    fontSize: 13,
+    cursor: "pointer",
+    boxShadow: "0 6px 18px rgba(232, 163, 61, 0.35)",
+  },
+  installBadgeLabel: { whiteSpace: "nowrap" },
   page: {
     minHeight: "100vh",
     background: "#1C1A16",
@@ -928,7 +995,7 @@ const S = {
     direction: "rtl",
     display: "flex",
     justifyContent: "center",
-    padding: "24px 16px",
+    padding: "24px 16px 96px",
     boxSizing: "border-box",
   },
   uploadWrap: { width: "100%", maxWidth: 560 },
