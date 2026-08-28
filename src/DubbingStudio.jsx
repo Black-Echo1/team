@@ -171,8 +171,17 @@ function denoiseChannel(data, sampleRate) {
   }
 
   // --- Step 2: subtract the noise profile from every frame's spectrum, then rebuild via overlap-add ---
-  const OVER_SUBTRACT = 1.8; // how aggressively to remove the learned noise profile
-  const FLOOR = 0.06; // keep a little residual so it doesn't sound artificially "dead"
+  // Two changes vs. a naive spectral-subtraction pass, both aimed at "musical noise"
+  // (the crackling/warbling artifact this kind of filter is notorious for):
+  //   1. Gentler, floor-protected subtraction per frequency bin (no over-aggressive OVER_SUBTRACT).
+  //   2. Smoothing the gain envelope across consecutive frames per bin, so the amount
+  //      of reduction doesn't jump abruptly frame-to-frame — abrupt per-frame changes
+  //      are exactly what produces the crackling/warble.
+  const OVER_SUBTRACT = 1.0; // subtract the noise profile at unity, not amplified
+  const FLOOR = 0.25; // keep a larger residual than before — much safer against artifacts
+  const SMOOTHING = 0.6; // 0 = no smoothing, closer to 1 = heavier smoothing across frames
+  const prevGain = new Float32Array(FRAME / 2).fill(1);
+
   for (let f = 0; f < frameCount; f++) {
     const start = f * HOP;
     const re = new Float32Array(FRAME);
@@ -183,8 +192,15 @@ function denoiseChannel(data, sampleRate) {
     for (let i = 0; i < FRAME / 2; i++) {
       const mag = Math.hypot(re[i], im[i]);
       const phase = Math.atan2(im[i], re[i]);
-      let newMag = mag - noiseProfile[i] * OVER_SUBTRACT;
-      newMag = Math.max(newMag, mag * FLOOR);
+
+      // Desired gain for this bin this frame (0..1), then smoothed against the
+      // previous frame's gain for this same bin to avoid frame-to-frame jumps.
+      const targetMag = Math.max(mag - noiseProfile[i] * OVER_SUBTRACT, mag * FLOOR);
+      const targetGain = mag > 1e-8 ? targetMag / mag : 1;
+      const gain = SMOOTHING * prevGain[i] + (1 - SMOOTHING) * targetGain;
+      prevGain[i] = gain;
+
+      const newMag = mag * gain;
       re[i] = newMag * Math.cos(phase);
       im[i] = newMag * Math.sin(phase);
       // mirror for the negative-frequency half (real signal symmetry)
@@ -1339,9 +1355,9 @@ export default function DubbingStudio() {
   return (
     <div style={S.page}>
         <ThemeToggle theme={theme} onToggle={toggleTheme} S={S} />
-      <div style={S.studioWrap}>
+      <div className="studio-wrap" style={S.studioWrap}>
         {/* Sidebar: character filter */}
-        <div style={S.sidebar}>
+        <div className="studio-sidebar" style={S.sidebar}>
           <div style={S.sidebarTitle}><Users size={15} /> الشخصيات</div>
           <button
             style={{ ...S.filterBtn, ...(activeCharacter === null ? S.filterBtnActive : {}) }}
@@ -1390,34 +1406,36 @@ export default function DubbingStudio() {
         </div>
 
         {/* Main studio */}
-        <div style={S.mainPanel}>
-          <video
-            ref={videoRef}
-            src={videoURL}
-            style={S.videoEl}
-            onPlay={() => setIsPlaying(true)}
-            onPause={() => setIsPlaying(false)}
-          />
+        <div className="studio-main" style={S.mainPanel}>
+          <div className="studio-video-block">
+            <video
+              ref={videoRef}
+              src={videoURL}
+              style={S.videoEl}
+              onPlay={() => setIsPlaying(true)}
+              onPause={() => setIsPlaying(false)}
+            />
 
-          {currentLine && (
-            <div style={S.subtitleCard}>
-              {currentChar && (
-                <div style={{ ...S.subtitleChar, color: currentChar.color }}>{currentChar.name}</div>
-              )}
-              <div style={S.subtitleText}>{currentLine.dialogue}</div>
-              <div style={S.subtitleTime}>{formatTime(currentLine.start)} → {formatTime(currentLine.end)}</div>
+            {currentLine && (
+              <div style={S.subtitleCard}>
+                {currentChar && (
+                  <div style={{ ...S.subtitleChar, color: currentChar.color }}>{currentChar.name}</div>
+                )}
+                <div style={S.subtitleText}>{currentLine.dialogue}</div>
+                <div style={S.subtitleTime}>{formatTime(currentLine.start)} → {formatTime(currentLine.end)}</div>
+              </div>
+            )}
+
+            <div style={S.transportRow}>
+              <button style={S.transportBtn} onClick={goPrev} disabled={filteredIndices.indexOf(currentIdx) <= 0}>◀ السابق</button>
+              <button style={S.playBtn} onClick={isPlaying ? pauseClip : playCurrentClip}>
+                {isPlaying ? <Pause size={20} /> : <Play size={20} />}
+              </button>
+              <button style={S.transportBtn} onClick={goNext} disabled={filteredIndices.indexOf(currentIdx) >= filteredIndices.length - 1}>التالي ▶</button>
             </div>
-          )}
-
-          <div style={S.transportRow}>
-            <button style={S.transportBtn} onClick={goPrev} disabled={filteredIndices.indexOf(currentIdx) <= 0}>◀ السابق</button>
-            <button style={S.playBtn} onClick={isPlaying ? pauseClip : playCurrentClip}>
-              {isPlaying ? <Pause size={20} /> : <Play size={20} />}
-            </button>
-            <button style={S.transportBtn} onClick={goNext} disabled={filteredIndices.indexOf(currentIdx) >= filteredIndices.length - 1}>التالي ▶</button>
           </div>
 
-          <div style={S.recordZone}>
+          <div className="studio-record-block" style={S.recordZone}>
             <div style={{ ...S.onAirBar, ...(isRecording ? S.onAirBarActive : {}) }}>
               <span style={S.onAirDot} />
               ON AIR — جاري التسجيل
@@ -1506,9 +1524,9 @@ export default function DubbingStudio() {
                 </div>
               </div>
             )}
-          </div>
 
-          <div style={S.miniProgress}>{recordedForFilter} / {totalForFilter} مسجّلة {activeCharacter ? `— ${activeCharacter}` : ""}</div>
+            <div style={S.miniProgress}>{recordedForFilter} / {totalForFilter} مسجّلة {activeCharacter ? `— ${activeCharacter}` : ""}</div>
+          </div>
         </div>
       </div>
     </div>

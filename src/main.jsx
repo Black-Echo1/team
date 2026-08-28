@@ -22,6 +22,40 @@ style.textContent = `
   @media (prefers-reduced-motion: reduce) {
     * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
   }
+
+  /* Studio layout: sidebar + main panel side-by-side on wide screens.
+     On phones, stack them — video/sidebar on top, the recording panel
+     (timeline + controls) below at full width so it has room to breathe. */
+  .studio-wrap {
+    display: flex;
+    gap: 16px;
+    width: 100%;
+    max-width: 900px;
+  }
+  .studio-sidebar {
+    width: 220px;
+    flex-shrink: 0;
+  }
+  .studio-main {
+    flex: 1;
+    min-width: 0; /* prevents flex children (like the waveform canvas) from overflowing */
+  }
+  @media (max-width: 760px) {
+    .studio-wrap {
+      flex-direction: column;
+    }
+    .studio-sidebar {
+      width: 100%;
+      order: 1;
+    }
+    .studio-video-block {
+      order: 2;
+    }
+    .studio-record-block {
+      order: 3;
+      width: 100%;
+    }
+  }
 `;
 document.head.appendChild(style);
 
