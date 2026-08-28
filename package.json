@@ -13,7 +13,8 @@
     "react-dom": "^18.2.0",
     "lucide-react": "^0.383.0",
     "@ffmpeg/ffmpeg": "^0.12.10",
-    "@ffmpeg/util": "^0.12.1"
+    "@ffmpeg/util": "^0.12.1",
+    "@sapphi-red/web-noise-suppressor": "^0.3.5"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",

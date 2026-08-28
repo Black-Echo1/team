@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { Upload, Play, Pause, Mic, Square, Check, Trash2, Download, Users, Film, ChevronRight, RotateCcw, X, FileText, Loader2 } from "lucide-react";
+import { Upload, Play, Pause, Mic, Square, Check, Trash2, Download, Users, Film, ChevronRight, RotateCcw, X, FileText, Loader2, Clock, Sparkles } from "lucide-react";
 import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { fetchFile, toBlobURL } from "@ffmpeg/util";
 
@@ -224,9 +224,76 @@ function denoiseChannel(data, sampleRate) {
   return out;
 }
 
-async function cleanupRecording(blob) {
+// ---------- RNNoise via @sapphi-red/web-noise-suppressor (real, well-documented API) ----------
+// This targets steady background noise (fan, electrical hum, room hiss) with an actual
+// trained noise-suppression model, rather than the hand-written spectral-subtraction
+// fallback above. It's loaded lazily (only when cleanup is actually used) and runs
+// offline via OfflineAudioContext, processing the whole recording through the same
+// AudioWorkletNode used for live noise suppression.
+let _rnnoiseAssetsPromise = null;
+async function loadRnnoiseAssets() {
+  if (!_rnnoiseAssetsPromise) {
+    _rnnoiseAssetsPromise = (async () => {
+      const [
+        { loadRnnoise, RnnoiseWorkletNode },
+        rnnoiseWorkletPath,
+        rnnoiseWasmPath,
+        rnnoiseWasmSimdPath,
+      ] = await Promise.all([
+        import("@sapphi-red/web-noise-suppressor"),
+        import("@sapphi-red/web-noise-suppressor/rnnoiseWorklet.js?url").then(m => m.default),
+        import("@sapphi-red/web-noise-suppressor/rnnoise.wasm?url").then(m => m.default),
+        import("@sapphi-red/web-noise-suppressor/rnnoise_simd.wasm?url").then(m => m.default),
+      ]);
+      const wasmBinary = await loadRnnoise({ url: rnnoiseWasmPath, simdUrl: rnnoiseWasmSimdPath });
+      return { RnnoiseWorkletNode, rnnoiseWorkletPath, wasmBinary };
+    })();
+  }
+  return _rnnoiseAssetsPromise;
+}
+
+async function denoiseWithRnnoise(decoded) {
+  const { RnnoiseWorkletNode, rnnoiseWorkletPath, wasmBinary } = await loadRnnoiseAssets();
+
+  // RNNoise's worklet operates at 48kHz internally; run the offline render at that
+  // rate for correctness, matching the demo's own approach.
+  const sampleRate = 48000;
+  const offlineCtx = new OfflineAudioContext(decoded.numberOfChannels, Math.ceil(decoded.duration * sampleRate), sampleRate);
+
+  await offlineCtx.audioWorklet.addModule(rnnoiseWorkletPath);
+
+  const source = offlineCtx.createBufferSource();
+  source.buffer = decoded;
+
+  const rnnoise = new RnnoiseWorkletNode(offlineCtx, {
+    wasmBinary,
+    maxChannels: decoded.numberOfChannels,
+  });
+
+  source.connect(rnnoise);
+  rnnoise.connect(offlineCtx.destination);
+  source.start();
+
+  const rendered = await offlineCtx.startRendering();
+  rnnoise.destroy?.();
+  return rendered;
+}
+
+async function cleanupRecording(blob, useRnnoise = false) {
   const decoded = await decodeBlobToAudioBuffer(blob);
   const numCh = decoded.numberOfChannels;
+
+  // Try the real RNNoise model first (better for steady hums like a fan or electrical
+  // buzz). If anything about it fails — module didn't load, browser lacks AudioWorklet
+  // support, etc. — fall back to the dependency-free spectral method so cleanup still works.
+  if (useRnnoise) {
+    try {
+      const rendered = await denoiseWithRnnoise(decoded);
+      return audioBufferToWavBlob(rendered);
+    } catch (err) {
+      console.warn("RNNoise unavailable, falling back to built-in spectral cleanup:", err);
+    }
+  }
 
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   const ctx = new AudioCtx();
@@ -374,6 +441,67 @@ function peaksFromBufferRange(audioBuffer, startTime, endTime, bucketCount) {
 }
 
 // ---------- Theme toggle: sun/moon icon button, fixed top-start on every screen ----------
+// ---------- Custom audio player: replaces the browser's native <audio controls>,
+// which renders as an unstyleable white bar the OS/browser controls, not us.
+// Same dark UI language as the rest of the app — play/pause, a seek bar, and time.
+function CustomAudioPlayer({ src, S, C }) {
+  const audioRef = useRef(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+
+  // Reset playback state whenever the source changes (e.g. a re-recording).
+  useEffect(() => {
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+  }, [src]);
+
+  const togglePlay = () => {
+    const el = audioRef.current;
+    if (!el) return;
+    if (isPlaying) {
+      el.pause();
+    } else {
+      el.play().catch(() => {});
+    }
+  };
+
+  const handleSeek = (e) => {
+    const el = audioRef.current;
+    if (!el || !duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    el.currentTime = ratio * duration;
+  };
+
+  const progressRatio = duration > 0 ? currentTime / duration : 0;
+
+  return (
+    <div style={S.customPlayer}>
+      <audio
+        ref={audioRef}
+        src={src}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onEnded={() => setIsPlaying(false)}
+        onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
+        onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime || 0)}
+        style={{ display: "none" }}
+      />
+      <button type="button" onClick={togglePlay} style={S.customPlayerBtn} aria-label={isPlaying ? "إيقاف" : "تشغيل"}>
+        {isPlaying ? <Pause size={13} /> : <Play size={13} />}
+      </button>
+      <div style={S.customPlayerTrack} onClick={handleSeek}>
+        <div style={{ ...S.customPlayerFill, width: `${progressRatio * 100}%` }} />
+      </div>
+      <span style={S.customPlayerTime}>
+        {formatTime(currentTime)} / {formatTime(duration)}
+      </span>
+    </div>
+  );
+}
+
 function ThemeToggle({ theme, onToggle, S }) {
   return (
     <button
@@ -1251,9 +1379,14 @@ export default function DubbingStudio() {
 
           {srtLines.length > 0 && (
             <div style={S.detectNote}>
-              {characters.length > 0
-                ? `✓ لقيت ${characters.length} شخصية بالأسماء تلقائياً (${characters.map(c => c.name).join("، ")})`
-                : "ما لقيت أسماء شخصيات بالملف — بتقدر تعيّنها يدوياً بالخطوة الجاية"}
+              {characters.length > 0 ? (
+                <span style={S.detectNoteRow}>
+                  <Check size={13} style={{ flexShrink: 0 }} />
+                  {`لقيت ${characters.length} شخصية بالأسماء تلقائياً (${characters.map(c => c.name).join("، ")})`}
+                </span>
+              ) : (
+                "ما لقيت أسماء شخصيات بالملف — بتقدر تعيّنها يدوياً بالخطوة الجاية"
+              )}
             </div>
           )}
 
@@ -1479,7 +1612,7 @@ export default function DubbingStudio() {
             {recordings[currentIdx] && (
               <div style={S.recordedRow}>
                 <Check size={15} color="#7A8C5C" />
-                <audio key={recordings[currentIdx].url} controls src={recordings[currentIdx].url} style={S.audioPlayer} />
+                <CustomAudioPlayer key={recordings[currentIdx].url} src={recordings[currentIdx].url} S={S} C={C} />
                 <Trash2 size={15} style={{ cursor: "pointer", opacity: 0.6 }} onClick={() => deleteRecording(currentIdx)} />
               </div>
             )}
@@ -1491,14 +1624,14 @@ export default function DubbingStudio() {
                   onClick={() => runAutoSync(currentIdx)}
                   disabled={processingIdx === currentIdx}
                 >
-                  {processingIdx === currentIdx ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : "⏱️"} مزامنة تلقائية
+                  {processingIdx === currentIdx ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Clock size={13} />} مزامنة تلقائية
                 </button>
                 <button
                   style={S.toolBtn}
                   onClick={() => runCleanup(currentIdx)}
                   disabled={processingIdx === currentIdx}
                 >
-                  {processingIdx === currentIdx ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : "✨"} تنظيف الصوت
+                  {processingIdx === currentIdx ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={13} />} تنظيف الصوت
                 </button>
               </div>
             )}
@@ -1508,11 +1641,11 @@ export default function DubbingStudio() {
                 <div style={S.cleanCompareTitle}>مقارنة: الأصلي مقابل المنظّف</div>
                 <div style={S.cleanCompareRow}>
                   <span style={S.cleanLabel}>قبل</span>
-                  <audio controls src={recordings[currentIdx].url} style={S.audioPlayer} />
+                  <CustomAudioPlayer src={recordings[currentIdx].url} S={S} C={C} />
                 </div>
                 <div style={S.cleanCompareRow}>
                   <span style={S.cleanLabel}>بعد</span>
-                  <audio controls src={cleanedPreview[currentIdx].url} style={S.audioPlayer} />
+                  <CustomAudioPlayer src={cleanedPreview[currentIdx].url} S={S} C={C} />
                 </div>
                 <div style={S.cleanActionsRow}>
                   <button style={S.acceptCleanBtn} onClick={() => acceptCleaned(currentIdx)}>
@@ -1799,6 +1932,7 @@ function buildStyles(C) {
     fontSize: 12.5, color: C.textDim, background: C.surface, border: `1px solid ${C.line}`,
     borderRadius: 8, padding: "10px 14px", marginBottom: 20, lineHeight: 1.6,
   },
+  detectNoteRow: { display: "flex", alignItems: "flex-start", gap: 7 },
   primaryBtn: {
     width: "100%", background: C.onAir, color: "#FFF", border: "none", borderRadius: 8,
     padding: "14px 20px", fontSize: 14, fontWeight: 700, cursor: "pointer",
@@ -1990,6 +2124,25 @@ function buildStyles(C) {
     padding: "8px 14px", fontSize: 12, cursor: "pointer",
   },
   audioPlayer: { height: 32, maxWidth: 220 },
+  customPlayer: {
+    display: "flex", alignItems: "center", gap: 8, background: C.surfaceRaised,
+    border: `1px solid ${C.line}`, borderRadius: 999, padding: "5px 10px", minWidth: 180, maxWidth: 240,
+  },
+  customPlayerBtn: {
+    display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+    width: 24, height: 24, borderRadius: 999, background: C.onAir, color: "#FFF",
+    border: "none", cursor: "pointer", padding: 0,
+  },
+  customPlayerTrack: {
+    flex: 1, height: 4, borderRadius: 999, background: C.line, cursor: "pointer", position: "relative",
+  },
+  customPlayerFill: {
+    height: "100%", borderRadius: 999, background: C.onAir,
+  },
+  customPlayerTime: {
+    fontSize: 10.5, color: C.textFaint, fontFamily: "'JetBrains Mono', monospace",
+    flexShrink: 0, minWidth: 62, textAlign: "left",
+  },
   miniProgress: { textAlign: "center", fontSize: 11, color: C.textFaint, fontFamily: "'JetBrains Mono', monospace" },
 
   // ON-AIR signature bar — the one bold element, only alive while recording
