@@ -2,42 +2,11 @@
 <html lang="ar" dir="rtl">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>استوديو الدوبلاج</title>
-
-    <!-- PWA: allows "Add to Home Screen" to install this as a standalone app -->
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#0f172a" />
-
-    <!-- iOS-specific "add to home screen" behavior -->
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="الدوبلاج" />
-    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-
-    <!-- Android/Chrome icon -->
-    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
-
-    <style>
-      /* Extra belt-and-suspenders against pinch/double-tap zoom on mobile */
-      html, body {
-        touch-action: pan-x pan-y;
-        overscroll-behavior: none;
-      }
-    </style>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
-    <script>
-      // Register the service worker so the app can be installed and works
-      // reliably when reopened from the home screen icon.
-      if ("serviceWorker" in navigator) {
-        window.addEventListener("load", () => {
-          navigator.serviceWorker.register("/sw.js").catch(() => {});
-        });
-      }
-    </script>
   </body>
 </html>
