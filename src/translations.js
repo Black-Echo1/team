@@ -14,9 +14,11 @@ export const translations = {
     srtFileHint: ".srt فقط",
     srtFileUploaded: "تم التحليل — اضغط للتغيير",
     srtLineCount: (n) => `${n} سطر ترجمة`,
-    detectedCharacters: (n, names) => `✓ لقيت ${n} شخصية بالأسماء تلقائياً (${names})`,
+    detectedCharacters: (n, names) => `لقيت ${n} شخصية بالأسماء تلقائياً (${names})`,
     noDetectedCharacters: "ما لقيت أسماء شخصيات بالملف — بتقدر تعيّنها يدوياً بالخطوة الجاية",
     nextCharactersBtn: "التالي: الشخصيات",
+    dropHereHint: "أفلت الملفين هنا...",
+    dragBothHint: "بتقدر تسحب الفيديو وملف الـ SRT مع بعض وتفلتهم هنا دفعة وحدة",
 
     // Characters stage
     charactersTitle: "الشخصيات",
@@ -40,8 +42,8 @@ export const translations = {
     prevBtn: "◀ السابق",
     nextBtn: "التالي ▶",
     onAirLabel: "ON AIR — جاري التسجيل",
-    originalAudioLegend: "صوت الفيديو الأصلي",
-    yourVoiceLegend: "صوتك الآن",
+    originalAudioLegend: "الأصلي",
+    yourVoiceLegend: "تسجيلك",
     recordBtn: "سجّل هذا المقطع",
     stopRecordingBtn: "إيقاف التسجيل",
     autoSyncBtn: "مزامنة تلقائية",
@@ -66,6 +68,15 @@ export const translations = {
     timelineTitle: "المسار الزمني",
     notRecordedYet: "لم تُسجّل بعد",
     missingLabel: "ناقصة",
+
+    audioExportTitle: "تنزيل الصوت المدموج (بدون فيديو)",
+    audioExportHint: "يدمج كل التسجيلات بمسار صوت واحد كامل، بنفس ترتيب وتوقيت الفيديو.",
+    audioExportBtn: "دمج وتنزيل الصوت الكامل (WAV)",
+    audioExportWorking: "جاري دمج الأصوات...",
+    audioExportError: "صار خطأ أثناء دمج الأصوات. جرب مرة ثانية.",
+    audioReady: "الصوت جاهز",
+    downloadAudioBtn: "تنزيل ملف الصوت",
+
     exportTitle: "تصدير الفيديو النهائي",
     exportHint: "يدمج كل الأصوات المسجّلة مع الفيديو الأصلي بملف واحد جاهز.",
     exportBtn: "تصدير الفيديو النهائي (MP4)",
@@ -76,12 +87,13 @@ export const translations = {
     exportError: "صار خطأ أثناء التصدير. جرب مرة ثانية أو تأكد إن كل الأسطر مسجّلة.",
     videoReady: "الفيديو جاهز",
     downloadFinalVideoBtn: "تنزيل الفيديو النهائي",
-    downloadRecordingsIndividualBtn: "تنزيل التسجيلات منفردة (اختياري)",
+    downloadRecordingsIndividualBtn: "تنزيل التسجيلات منفردة (اختياري، ملف لكل جملة)",
 
     // Top bar controls
     themeToggleToDark: "الوضع الداكن",
     themeToggleToLight: "الوضع الفاتح",
-    langToggle: "English",
+    langToggleLabel: "English",
+    langToggleAria: "Switch to English",
   },
 
   en: {
@@ -97,9 +109,11 @@ export const translations = {
     srtFileHint: ".srt only",
     srtFileUploaded: "Parsed — click to change",
     srtLineCount: (n) => `${n} subtitle lines`,
-    detectedCharacters: (n, names) => `✓ Found ${n} named characters automatically (${names})`,
+    detectedCharacters: (n, names) => `Found ${n} named characters automatically (${names})`,
     noDetectedCharacters: "No character names found in the file — you can assign them manually in the next step",
     nextCharactersBtn: "Next: Characters",
+    dropHereHint: "Drop both files here...",
+    dragBothHint: "You can drag the video and the .srt file together and drop them here at once",
 
     // Characters stage
     charactersTitle: "Characters",
@@ -123,8 +137,8 @@ export const translations = {
     prevBtn: "◀ Prev",
     nextBtn: "Next ▶",
     onAirLabel: "ON AIR — Recording",
-    originalAudioLegend: "Original video audio",
-    yourVoiceLegend: "Your voice now",
+    originalAudioLegend: "Original",
+    yourVoiceLegend: "Your take",
     recordBtn: "Record this line",
     stopRecordingBtn: "Stop recording",
     autoSyncBtn: "Auto-sync",
@@ -149,6 +163,15 @@ export const translations = {
     timelineTitle: "Timeline",
     notRecordedYet: "Not recorded yet",
     missingLabel: "Missing",
+
+    audioExportTitle: "Download merged audio (no video)",
+    audioExportHint: "Merges every recording into a single audio track, matching the video's timing.",
+    audioExportBtn: "Merge & download audio (WAV)",
+    audioExportWorking: "Merging audio...",
+    audioExportError: "Something went wrong merging the audio. Try again.",
+    audioReady: "Audio ready",
+    downloadAudioBtn: "Download audio file",
+
     exportTitle: "Export final video",
     exportHint: "Merges every recording with the original video into one file.",
     exportBtn: "Export final video (MP4)",
@@ -164,7 +187,8 @@ export const translations = {
     // Top bar controls
     themeToggleToDark: "Dark mode",
     themeToggleToLight: "Light mode",
-    langToggle: "العربية",
+    langToggleLabel: "العربية",
+    langToggleAria: "التبديل للعربية",
   },
 };
 

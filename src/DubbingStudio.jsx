@@ -1,7 +1,8 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { Upload, Play, Pause, Mic, Square, Check, Trash2, Download, Users, Film, ChevronRight, RotateCcw, X, FileText, Loader2, Clock, Sparkles } from "lucide-react";
+import { Upload, Play, Pause, Mic, Square, Check, Trash2, Download, Users, Film, ChevronRight, RotateCcw, X, FileText, Loader2, Clock, Sparkles, Languages } from "lucide-react";
 import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { fetchFile, toBlobURL } from "@ffmpeg/util";
+import { useTranslation } from "./translations.js";
 
 // ---------- Silence detection + trimming (basic auto-sync, no AI) ----------
 async function decodeBlobToAudioBuffer(blob) {
@@ -502,12 +503,12 @@ function CustomAudioPlayer({ src, S, C }) {
   );
 }
 
-function ThemeToggle({ theme, onToggle, S }) {
+function ThemeToggle({ theme, onToggle, S, t }) {
   return (
     <button
       onClick={onToggle}
-      aria-label={theme === "dark" ? "التبديل للوضع الفاتح" : "التبديل للوضع الداكن"}
-      title={theme === "dark" ? "الوضع الفاتح" : "الوضع الداكن"}
+      aria-label={theme === "dark" ? t("themeToggleToLight") : t("themeToggleToDark")}
+      title={theme === "dark" ? t("themeToggleToLight") : t("themeToggleToDark")}
       style={S.themeToggleBtn}
     >
       {theme === "dark" ? (
@@ -532,6 +533,21 @@ function ThemeToggle({ theme, onToggle, S }) {
           />
         </svg>
       )}
+    </button>
+  );
+}
+
+// ---------- Language toggle: switches the whole UI between Arabic (RTL) and English (LTR) ----------
+function LangToggle({ lang, onToggle, S, t }) {
+  return (
+    <button
+      onClick={onToggle}
+      aria-label={t("langToggleAria")}
+      title={t("langToggleLabel")}
+      style={S.langToggleBtn}
+    >
+      <Languages size={16} />
+      <span>{lang === "ar" ? "EN" : "ع"}</span>
     </button>
   );
 }
@@ -734,6 +750,28 @@ export default function DubbingStudio() {
     });
   };
 
+  // Language: defaults to the browser's language, but the user can override with
+  // the toggle; the override is remembered for next time. Arabic is RTL, English is LTR.
+  const [lang, setLang] = useState(() => {
+    try {
+      const saved = localStorage.getItem("dubbing-lang");
+      if (saved === "ar" || saved === "en") return saved;
+    } catch {}
+    if (typeof navigator !== "undefined" && navigator.language?.toLowerCase().startsWith("en")) {
+      return "en";
+    }
+    return "ar";
+  });
+  const toggleLang = () => {
+    setLang(prev => {
+      const next = prev === "ar" ? "en" : "ar";
+      try { localStorage.setItem("dubbing-lang", next); } catch {}
+      return next;
+    });
+  };
+  const t = useTranslation(lang);
+  const dir = lang === "ar" ? "rtl" : "ltr";
+
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
@@ -743,7 +781,7 @@ export default function DubbingStudio() {
   const liveAudioCtxRef = useRef(null);
 
   const C = THEMES[theme];
-  const S = useMemo(() => buildStyles(C), [theme]); // eslint-disable-line
+  const S = useMemo(() => buildStyles(C, dir), [theme, dir]); // eslint-disable-line
 
   const loadVideoFile = (f) => {
     if (!f) return;
@@ -1015,7 +1053,7 @@ export default function DubbingStudio() {
       videoRef.current.addEventListener("timeupdate", onTime);
       videoRef.current.addEventListener("pause", stopBoth);
     } catch (err) {
-      setMicError("ما قدرت أوصل للمايك. تأكد من صلاحيات المتصفح.");
+      setMicError(t("micErrorGeneric"));
     }
   };
 
@@ -1080,7 +1118,7 @@ export default function DubbingStudio() {
         setMicError(null);
       }
     } catch (err) {
-      setMicError("ما قدرت أسوي مزامنة تلقائية لهذا المقطع.");
+      setMicError(t("autoSyncError"));
     } finally {
       setProcessingIdx(null);
     }
@@ -1095,7 +1133,7 @@ export default function DubbingStudio() {
       const url = URL.createObjectURL(blob);
       setCleanedPreview(prev => ({ ...prev, [idx]: { blob, url } }));
     } catch (err) {
-      setMicError("ما قدرت أنظّف الصوت لهذا المقطع.");
+      setMicError(t("cleanupError"));
     } finally {
       setProcessingIdx(null);
     }
@@ -1158,7 +1196,7 @@ export default function DubbingStudio() {
     if (p && typeof p.catch === "function") {
       p.catch((err) => {
         console.error("Review playback failed:", err);
-        setMicError("ما قدر المتصفح يشغل المعاينة. جرب تضغط تشغيل مرة ثانية.");
+        setMicError(t("reviewPlaybackError"));
       });
     }
     setReviewPlaying(true);
@@ -1210,7 +1248,7 @@ export default function DubbingStudio() {
       setAudioExportState("done");
     } catch (err) {
       console.error(err);
-      setAudioExportError("صار خطأ أثناء دمج الأصوات. جرب مرة ثانية.");
+      setAudioExportError(t("audioExportError"));
       setAudioExportState("error");
     }
   };
@@ -1324,7 +1362,7 @@ export default function DubbingStudio() {
       setExportedSnapshot(recordingsFingerprint);
     } catch (err) {
       console.error(err);
-      setExportError("صار خطأ أثناء التصدير. جرب مرة ثانية أو تأكد إن كل الأسطر مسجّلة.");
+      setExportError(t("exportError"));
       setExportState("error");
     }
   };
@@ -1333,7 +1371,10 @@ export default function DubbingStudio() {
   if (stage === "upload") {
     return (
       <div style={S.page}>
-        <ThemeToggle theme={theme} onToggle={toggleTheme} S={S} />
+        <div style={S.topControlsRow}>
+          <ThemeToggle theme={theme} onToggle={toggleTheme} S={S} t={t} />
+          <LangToggle lang={lang} onToggle={toggleLang} S={S} t={t} />
+        </div>
         <div style={S.uploadWrap}>
           <div style={S.brandRow}>
             <div style={S.logoMark}>
@@ -1345,8 +1386,8 @@ export default function DubbingStudio() {
               </svg>
             </div>
             <div>
-              <div style={S.brandTitle}>استوديو الدوبلاج</div>
-              <div style={S.brandSub}>قسّم، سجّل، صدّر — بترتيب اللقطات</div>
+              <div style={S.brandTitle}>{t("appTitle")}</div>
+              <div style={S.brandSub}>{t("appTagline")}</div>
             </div>
           </div>
 
@@ -1359,22 +1400,20 @@ export default function DubbingStudio() {
             <label style={{ ...S.dropZone, ...(videoFile ? S.dropZoneFilled : {}) }}>
               <input ref={fileInputRef} type="file" accept="video/*" onChange={handleVideoUpload} style={{ display: "none" }} />
               <Film size={28} strokeWidth={1.5} color={videoFile ? C.onAir : C.textFaint} />
-              <div style={S.dropTitle}>{videoFile ? videoFile.name : "ملف الفيديو"}</div>
-              <div style={S.dropHint}>{videoFile ? "تم الرفع — اضغط للتغيير" : "MP4, MOV, WEBM"}</div>
+              <div style={S.dropTitle}>{videoFile ? videoFile.name : t("videoFileLabel")}</div>
+              <div style={S.dropHint}>{videoFile ? t("videoFileUploaded") : t("videoFileHint")}</div>
             </label>
 
             <label style={{ ...S.dropZone, ...(srtLines.length ? S.dropZoneFilled : {}) }}>
               <input ref={srtInputRef} type="file" accept=".srt" onChange={handleSrtUpload} style={{ display: "none" }} />
               <FileText size={28} strokeWidth={1.5} color={srtLines.length ? C.onAir : C.textFaint} />
-              <div style={S.dropTitle}>{srtLines.length ? `${srtLines.length} سطر ترجمة` : "ملف الترجمة"}</div>
-              <div style={S.dropHint}>{srtLines.length ? "تم التحليل — اضغط للتغيير" : ".srt فقط"}</div>
+              <div style={S.dropTitle}>{srtLines.length ? t("srtLineCount", srtLines.length) : t("srtFileLabel")}</div>
+              <div style={S.dropHint}>{srtLines.length ? t("srtFileUploaded") : t("srtFileHint")}</div>
             </label>
           </div>
 
           <div style={S.dragHint}>
-            {isDragOver
-              ? "أفلت الملفين هنا..."
-              : "بتقدر تسحب الفيديو وملف الـ SRT مع بعض وتفلتهم هنا دفعة وحدة"}
+            {isDragOver ? t("dropHereHint") : t("dragBothHint")}
           </div>
 
           {srtLines.length > 0 && (
@@ -1382,10 +1421,10 @@ export default function DubbingStudio() {
               {characters.length > 0 ? (
                 <span style={S.detectNoteRow}>
                   <Check size={13} style={{ flexShrink: 0 }} />
-                  {`لقيت ${characters.length} شخصية بالأسماء تلقائياً (${characters.map(c => c.name).join("، ")})`}
+                  {t("detectedCharacters", characters.length, characters.map(c => c.name).join(lang === "ar" ? "، " : ", "))}
                 </span>
               ) : (
-                "ما لقيت أسماء شخصيات بالملف — بتقدر تعيّنها يدوياً بالخطوة الجاية"
+                t("noDetectedCharacters")
               )}
             </div>
           )}
@@ -1394,8 +1433,8 @@ export default function DubbingStudio() {
             style={{ ...S.primaryBtn, opacity: canProceedToCharacters ? 1 : 0.4, pointerEvents: canProceedToCharacters ? "auto" : "none" }}
             onClick={() => setStage("characters")}
           >
-            التالي: الشخصيات
-            <ChevronRight size={18} />
+            {t("nextCharactersBtn")}
+            <ChevronRight size={18} style={{ transform: dir === "ltr" ? "scaleX(-1)" : "none" }} />
           </button>
         </div>
       </div>
@@ -1406,27 +1445,30 @@ export default function DubbingStudio() {
   if (stage === "characters") {
     return (
       <div style={S.page}>
-        <ThemeToggle theme={theme} onToggle={toggleTheme} S={S} />
+        <div style={S.topControlsRow}>
+          <ThemeToggle theme={theme} onToggle={toggleTheme} S={S} t={t} />
+          <LangToggle lang={lang} onToggle={toggleLang} S={S} t={t} />
+        </div>
         <div style={S.charWrap}>
           <div style={S.stageHeader}>
             <div>
-              <div style={S.stageTitle}>الشخصيات</div>
-              <div style={S.stageSub}>ضيف الشخصيات وعيّن كل سطر حوار</div>
+              <div style={S.stageTitle}>{t("charactersTitle")}</div>
+              <div style={S.stageSub}>{t("charactersSub")}</div>
             </div>
             <div style={S.progressPill}>
-              {Object.keys(lineAssignments).length} / {srtLines.length} معيّنة
+              {t("assignedProgress", Object.keys(lineAssignments).length, srtLines.length)}
             </div>
           </div>
 
           <div style={S.charAddRow}>
             <input
               style={S.charInput}
-              placeholder="اسم شخصية جديدة..."
+              placeholder={t("newCharacterPlaceholder")}
               value={newCharName}
               onChange={(e) => setNewCharName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && addCharacter()}
             />
-            <button style={S.addBtn} onClick={addCharacter}>+ إضافة</button>
+            <button style={S.addBtn} onClick={addCharacter}>{t("addBtn")}</button>
           </div>
 
           <div style={S.charChips}>
@@ -1440,7 +1482,7 @@ export default function DubbingStudio() {
                 <X size={13} style={{ cursor: "pointer", opacity: 0.5 }} onClick={() => removeCharacter(c.name)} />
               </div>
             ))}
-            {characters.length === 0 && <div style={S.emptyHint}>ما ضفت شخصيات بعد</div>}
+            {characters.length === 0 && <div style={S.emptyHint}>{t("noCharacters")}</div>}
           </div>
 
           <div style={S.linesList}>
@@ -1457,7 +1499,7 @@ export default function DubbingStudio() {
                       value={assigned || ""}
                       onChange={(e) => assignLine(i, e.target.value)}
                     >
-                      <option value="">— بدون —</option>
+                      <option value="">{t("unassignedOption")}</option>
                       {characters.map(c => (
                         <option key={c.name} value={c.name}>{c.name}</option>
                       ))}
@@ -1469,12 +1511,12 @@ export default function DubbingStudio() {
           </div>
 
           <div style={S.footerRow}>
-            <button style={S.ghostBtn} onClick={() => setStage("upload")}>رجوع</button>
+            <button style={S.ghostBtn} onClick={() => setStage("upload")}>{t("backBtn")}</button>
             <button
               style={{ ...S.primaryBtn, opacity: characters.length ? 1 : 0.4, pointerEvents: characters.length ? "auto" : "none" }}
               onClick={() => { setStage("studio"); setActiveCharacter(characters[0]?.name || null); setCurrentIdx(0); }}
             >
-              ابدأ التسجيل
+              {t("startRecordingBtn")}
               <Mic size={17} />
             </button>
           </div>
@@ -1487,16 +1529,19 @@ export default function DubbingStudio() {
   if (stage === "studio") {
   return (
     <div style={S.page}>
-        <ThemeToggle theme={theme} onToggle={toggleTheme} S={S} />
+        <div style={S.topControlsRow}>
+          <ThemeToggle theme={theme} onToggle={toggleTheme} S={S} t={t} />
+          <LangToggle lang={lang} onToggle={toggleLang} S={S} t={t} />
+        </div>
       <div className="studio-wrap" style={S.studioWrap}>
         {/* Sidebar: character filter */}
         <div className="studio-sidebar" style={S.sidebar}>
-          <div style={S.sidebarTitle}><Users size={15} /> الشخصيات</div>
+          <div style={S.sidebarTitle}><Users size={15} /> {t("charactersSidebarTitle")}</div>
           <button
             style={{ ...S.filterBtn, ...(activeCharacter === null ? S.filterBtnActive : {}) }}
             onClick={() => setActiveCharacter(null)}
           >
-            الكل
+            {t("allFilter")}
             <span style={S.filterCount}>{srtLines.length}</span>
           </button>
           {characters.map(c => {
@@ -1520,21 +1565,21 @@ export default function DubbingStudio() {
 
           <div style={S.sidebarDivider} />
           <div style={S.overallProgress}>
-            <div style={S.overallLabel}>الإنجاز الكلي</div>
+            <div style={S.overallLabel}>{t("overallProgressLabel")}</div>
             <div style={S.progressTrack}>
               <div style={{ ...S.progressFill, width: `${(recordedCount / srtLines.length) * 100}%` }} />
             </div>
             <div style={S.overallNum}>{recordedCount} / {srtLines.length}</div>
           </div>
           <button style={S.downloadBtn} onClick={downloadAll} disabled={recordedForFilter === 0}>
-            <Download size={15} /> تنزيل التسجيلات
+            <Download size={15} /> {t("downloadRecordingsBtn")}
           </button>
           <button
             style={{ ...S.downloadBtn, background: "#E8A33D", color: "#1C1A16" }}
             onClick={() => setStage("review")}
             disabled={recordedCount === 0}
           >
-            <Film size={15} /> الشاشة النهائية
+            <Film size={15} /> {t("finalScreenBtn")}
           </button>
         </div>
 
@@ -1560,18 +1605,18 @@ export default function DubbingStudio() {
             )}
 
             <div style={S.transportRow}>
-              <button style={S.transportBtn} onClick={goPrev} disabled={filteredIndices.indexOf(currentIdx) <= 0}>◀ السابق</button>
+              <button style={S.transportBtn} onClick={goPrev} disabled={filteredIndices.indexOf(currentIdx) <= 0}>{t("prevBtn")}</button>
               <button style={S.playBtn} onClick={isPlaying ? pauseClip : playCurrentClip}>
                 {isPlaying ? <Pause size={20} /> : <Play size={20} />}
               </button>
-              <button style={S.transportBtn} onClick={goNext} disabled={filteredIndices.indexOf(currentIdx) >= filteredIndices.length - 1}>التالي ▶</button>
+              <button style={S.transportBtn} onClick={goNext} disabled={filteredIndices.indexOf(currentIdx) >= filteredIndices.length - 1}>{t("nextBtn")}</button>
             </div>
           </div>
 
           <div className="studio-record-block" style={S.recordZone}>
             <div style={{ ...S.onAirBar, ...(isRecording ? S.onAirBarActive : {}) }}>
               <span style={S.onAirDot} />
-              ON AIR — جاري التسجيل
+              {t("onAirLabel")}
             </div>
 
             <div style={S.waveformBox}>
@@ -1588,8 +1633,8 @@ export default function DubbingStudio() {
                 C={C}
               />
               <div style={S.timelineTrackLabels}>
-                <span style={S.trackLabel}><span style={{ ...S.legendSwatch, background: C.onAir }} /> الأصلي</span>
-                <span style={S.trackLabel}><span style={{ ...S.legendSwatch, background: C.blue }} /> تسجيلك</span>
+                <span style={S.trackLabel}><span style={{ ...S.legendSwatch, background: C.onAir }} /> {t("originalAudioLegend")}</span>
+                <span style={S.trackLabel}><span style={{ ...S.legendSwatch, background: C.blue }} /> {t("yourVoiceLegend")}</span>
               </div>
               {currentLine && (
                 <div style={S.playheadTimeLabel}>
@@ -1601,11 +1646,11 @@ export default function DubbingStudio() {
             {micError && <div style={S.errorMsg}>{micError}</div>}
             {!isRecording ? (
               <button style={S.recordBtn} onClick={startRecording}>
-                <Mic size={18} /> سجّل هذا المقطع
+                <Mic size={18} /> {t("recordBtn")}
               </button>
             ) : (
               <button style={S.stopBtn} onClick={stopRecording}>
-                <Square size={16} fill="white" /> إيقاف التسجيل
+                <Square size={16} fill="white" /> {t("stopRecordingBtn")}
               </button>
             )}
 
@@ -1624,41 +1669,41 @@ export default function DubbingStudio() {
                   onClick={() => runAutoSync(currentIdx)}
                   disabled={processingIdx === currentIdx}
                 >
-                  {processingIdx === currentIdx ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Clock size={13} />} مزامنة تلقائية
+                  {processingIdx === currentIdx ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Clock size={13} />} {t("autoSyncBtn")}
                 </button>
                 <button
                   style={S.toolBtn}
                   onClick={() => runCleanup(currentIdx)}
                   disabled={processingIdx === currentIdx}
                 >
-                  {processingIdx === currentIdx ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={13} />} تنظيف الصوت
+                  {processingIdx === currentIdx ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={13} />} {t("cleanupBtn")}
                 </button>
               </div>
             )}
 
             {cleanedPreview[currentIdx] && (
               <div style={S.cleanCompareBox}>
-                <div style={S.cleanCompareTitle}>مقارنة: الأصلي مقابل المنظّف</div>
+                <div style={S.cleanCompareTitle}>{t("cleanCompareTitle")}</div>
                 <div style={S.cleanCompareRow}>
-                  <span style={S.cleanLabel}>قبل</span>
+                  <span style={S.cleanLabel}>{t("beforeLabel")}</span>
                   <CustomAudioPlayer src={recordings[currentIdx].url} S={S} C={C} />
                 </div>
                 <div style={S.cleanCompareRow}>
-                  <span style={S.cleanLabel}>بعد</span>
+                  <span style={S.cleanLabel}>{t("afterLabel")}</span>
                   <CustomAudioPlayer src={cleanedPreview[currentIdx].url} S={S} C={C} />
                 </div>
                 <div style={S.cleanActionsRow}>
                   <button style={S.acceptCleanBtn} onClick={() => acceptCleaned(currentIdx)}>
-                    <Check size={13} /> استخدم النسخة المنظّفة
+                    <Check size={13} /> {t("useCleanedBtn")}
                   </button>
                   <button style={S.discardCleanBtn} onClick={() => discardCleaned(currentIdx)}>
-                    تجاهل
+                    {t("discardBtn")}
                   </button>
                 </div>
               </div>
             )}
 
-            <div style={S.miniProgress}>{recordedForFilter} / {totalForFilter} مسجّلة {activeCharacter ? `— ${activeCharacter}` : ""}</div>
+            <div style={S.miniProgress}>{t("recordedProgress", recordedForFilter, totalForFilter, activeCharacter)}</div>
           </div>
         </div>
       </div>
@@ -1670,14 +1715,17 @@ export default function DubbingStudio() {
   if (stage === "review") {
     return (
       <div style={S.page}>
-        <ThemeToggle theme={theme} onToggle={toggleTheme} S={S} />
+        <div style={S.topControlsRow}>
+          <ThemeToggle theme={theme} onToggle={toggleTheme} S={S} t={t} />
+          <LangToggle lang={lang} onToggle={toggleLang} S={S} t={t} />
+        </div>
         <div style={S.reviewWrap}>
           <div style={S.stageHeader}>
             <div>
-              <div style={S.stageTitle}>الشاشة النهائية</div>
-              <div style={S.stageSub}>معاينة الفيديو مع كل الأصوات المسجّلة بمواضعها</div>
+              <div style={S.stageTitle}>{t("finalScreenTitle")}</div>
+              <div style={S.stageSub}>{t("finalScreenSub")}</div>
             </div>
-            <button style={S.ghostBtn} onClick={() => setStage("studio")}>رجوع للتسجيل</button>
+            <button style={S.ghostBtn} onClick={() => setStage("studio")}>{t("backToRecordingBtn")}</button>
           </div>
 
           <video
@@ -1694,12 +1742,12 @@ export default function DubbingStudio() {
             <button style={S.playBtn} onClick={reviewPlaying ? () => reviewVideoRef.current?.pause() : playFullReview}>
               {reviewPlaying ? <Pause size={20} /> : <Play size={20} />}
             </button>
-            <div style={{ fontSize: 13, color: "#8A8378" }}>تشغيل كامل الفيديو مع الدوبلاج</div>
+            <div style={{ fontSize: 13, color: "#8A8378" }}>{t("playFullVideoHint")}</div>
           </div>
 
           {/* Timeline */}
           <div style={S.timelineWrap}>
-            <div style={S.timelineTitle}>المسار الزمني</div>
+            <div style={S.timelineTitle}>{t("timelineTitle")}</div>
             <div style={S.timelineTrack}>
               {srtLines.map((line, i) => {
                 const char = characters.find(c => c.name === lineAssignments[i]);
@@ -1731,7 +1779,7 @@ export default function DubbingStudio() {
               ))}
               <div style={S.legendItem}>
                 <span style={{ width: 9, height: 9, borderRadius: 3, border: "1.5px dashed #6E685D" }} />
-                لم تُسجّل بعد
+                {t("notRecordedYet")}
               </div>
             </div>
           </div>
@@ -1748,26 +1796,26 @@ export default function DubbingStudio() {
                   <div style={S.lineText}>{line.dialogue}</div>
                   {rec
                     ? <Check size={15} color="#7A8C5C" style={{ flexShrink: 0 }} />
-                    : <span style={{ fontSize: 11, color: "#B5563C", flexShrink: 0 }}>ناقصة</span>}
+                    : <span style={{ fontSize: 11, color: "#B5563C", flexShrink: 0 }}>{t("missingLabel")}</span>}
                 </div>
               );
             })}
           </div>
 
           <div style={S.exportBox}>
-            <div style={S.exportTitle}>تنزيل الصوت المدموج (بدون فيديو)</div>
-            <div style={S.exportHint}>يدمج كل التسجيلات بمسار صوت واحد كامل، بنفس ترتيب وتوقيت الفيديو.</div>
+            <div style={S.exportTitle}>{t("audioExportTitle")}</div>
+            <div style={S.exportHint}>{t("audioExportHint")}</div>
 
             {audioExportState === "idle" && (
               <button style={S.exportBtn} onClick={exportMergedAudio}>
-                <Download size={16} /> دمج وتنزيل الصوت الكامل (WAV)
+                <Download size={16} /> {t("audioExportBtn")}
               </button>
             )}
 
             {audioExportState === "working" && (
               <div style={S.exportStatusRow}>
                 <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />
-                <span>جاري دمج الأصوات...</span>
+                <span>{t("audioExportWorking")}</span>
               </div>
             )}
 
@@ -1778,21 +1826,21 @@ export default function DubbingStudio() {
             {audioExportState === "done" && audioExportURL && (
               <div style={S.exportDoneRow}>
                 <Check size={16} color="#7A8C5C" />
-                <span>الصوت جاهز</span>
+                <span>{t("audioReady")}</span>
                 <a href={audioExportURL} download="dubbed_audio.wav" style={S.exportDownloadLink}>
-                  <Download size={14} /> تنزيل ملف الصوت
+                  <Download size={14} /> {t("downloadAudioBtn")}
                 </a>
               </div>
             )}
           </div>
 
           <div style={S.exportBox}>
-            <div style={S.exportTitle}>تصدير الفيديو النهائي</div>
-            <div style={S.exportHint}>يدمج كل الأصوات المسجّلة مع الفيديو الأصلي بملف واحد جاهز.</div>
+            <div style={S.exportTitle}>{t("exportTitle")}</div>
+            <div style={S.exportHint}>{t("exportHint")}</div>
 
             {exportState === "idle" && (
               <button style={S.exportBtn} onClick={exportFinalVideo}>
-                <Film size={16} /> {exportedSnapshot ? "إعادة تصدير الفيديو (تغيّرت التسجيلات)" : "تصدير الفيديو النهائي (MP4)"}
+                <Film size={16} /> {exportedSnapshot ? t("reExportBtn") : t("exportBtn")}
               </button>
             )}
 
@@ -1801,9 +1849,9 @@ export default function DubbingStudio() {
                 <div style={S.exportStatusRow}>
                   <Loader2 size={15} className="spin" style={{ animation: "spin 1s linear infinite" }} />
                   <span>
-                    {exportState === "loading-ffmpeg" && "تحميل أدوات المعالجة..."}
-                    {exportState === "merging-audio" && "دمج الأصوات..."}
-                    {exportState === "muxing" && `دمج الصوت مع الفيديو... ${exportProgress}%`}
+                    {exportState === "loading-ffmpeg" && t("loadingFFmpeg")}
+                    {exportState === "merging-audio" && t("mergingAudio")}
+                    {exportState === "muxing" && t("muxingProgress", exportProgress)}
                   </span>
                 </div>
                 <div style={S.progressTrack}>
@@ -1819,16 +1867,16 @@ export default function DubbingStudio() {
             {exportState === "done" && exportURL && (
               <div style={S.exportDoneRow}>
                 <Check size={16} color="#7A8C5C" />
-                <span>الفيديو جاهز</span>
+                <span>{t("videoReady")}</span>
                 <a href={exportURL} download="dubbed_final.mp4" style={S.exportDownloadLink}>
-                  <Download size={14} /> تنزيل الفيديو النهائي
+                  <Download size={14} /> {t("downloadFinalVideoBtn")}
                 </a>
               </div>
             )}
           </div>
 
           <button style={S.ghostBtn} onClick={downloadAll}>
-            <Download size={13} /> تنزيل التسجيلات منفردة (اختياري، ملف لكل جملة)
+            <Download size={13} /> {t("downloadRecordingsIndividualBtn")}
           </button>
         </div>
       </div>
@@ -1880,15 +1928,15 @@ const THEMES = {
   },
 };
 
-function buildStyles(C) {
+function buildStyles(C, dir) {
   return {
   page: {
     minHeight: "100vh",
     background: C.bg,
     backgroundImage: C.bgGradient,
     color: C.text,
-    fontFamily: "'Space Grotesk', 'Tajawal', 'Segoe UI', sans-serif",
-    direction: "rtl",
+    fontFamily: dir === "rtl" ? "'Space Grotesk', 'Tajawal', 'Segoe UI', sans-serif" : "'Space Grotesk', 'Inter', 'Segoe UI', sans-serif",
+    direction: dir,
     display: "flex",
     justifyContent: "center",
     padding: "24px 16px",
@@ -1896,11 +1944,19 @@ function buildStyles(C) {
     position: "relative",
     transition: "background 0.2s ease, color 0.2s ease",
   },
-  themeToggleBtn: {
+  topControlsRow: {
     position: "fixed", top: 16, insetInlineStart: 16, zIndex: 50,
+    display: "flex", alignItems: "center", gap: 8,
+  },
+  themeToggleBtn: {
     width: 34, height: 34, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
     background: C.surface, border: `1px solid ${C.line}`, color: C.textDim, cursor: "pointer",
     transition: "background 0.15s, color 0.15s",
+  },
+  langToggleBtn: {
+    height: 34, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+    padding: "0 10px", background: C.surface, border: `1px solid ${C.line}`, color: C.textDim, cursor: "pointer",
+    fontSize: 12, fontWeight: 700, transition: "background 0.15s, color 0.15s",
   },
   uploadWrap: { width: "100%", maxWidth: 560 },
   brandRow: { display: "flex", alignItems: "center", gap: 14, marginBottom: 36 },
